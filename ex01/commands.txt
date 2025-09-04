@@ -1,0 +1,63 @@
+1. man
+интерфейс справочного руководства по системе
+синтаксис: man [man options] [[section] page ...] ...
+примеры: man ls - описание для ls
+         man -a intro - вызывает введение в команды
+===
+2. chown
+сменить владельца/группу файла
+синтаксис: chown [OPTION]... [OWNER][:[GROUP]] FILE...
+           chown [OPTION]... --reference=RFILE FILE...
+примеры: chown root /u - сменить владельца на root
+         chown root:staff /u - тоже, и меняет группу на staff
+===         
+3. wget
+загрузчик файлов по сети
+синтаксис: wget [option]... [URL]...
+примеры: wget https://github.com/ezhsluny/ROS/blob/main/ex00/screenshot.png
+===
+4. usermod
+изменение параметров пользователя
+синтаксис: usermod [options] LOGIN
+примеры: usermod -d HOME_DIR - смена домашней директории
+         usermod -l NEW_LOFIN - смена имени пользователя
+===      
+5. dpkg
+менеджер пакетов для Debian
+синтаксис: dpkg [option...] action
+примеры: dpkg -i package.deb - устанавливает deb пакет
+         dpkg -r *.deb - удаляет
+         dpkg -l - список установленных пакетов
+===      
+6. grep
+поиск строк в файлах/выводе, которые соответветствуют паттерну
+синтаксис: grep [OPTION...] PATTERNS [FILE...]
+           grep [OPTION...] -e PATTERNS ... [FILE...]
+           grep [OPTION...] -f PATTERN_FILE ... [FILE...]
+примеры: grep hello text.txt - найдет hello в файле text.txt
+         grep -i Hello text.txt - тоже, но не будет учитывать регистр букв
+===      
+7. pwd
+отображение пути до текущей директории
+синтаксис: pwd [OPTION] ...
+примеры: pwd
+===
+8. mv
+перемещение/переименование файлов. перемещает и удаляет файл из исходной директории
+синтаксис: mv [OPTION]... [-T] SOURCE DEST
+           mv [OPTION]... SOURCE... DIRECTORY
+           mv [OPTION]... -t DIRECTORY SOURCE...
+примеры: mv file1.txt file2.txt - переименование file1 в file2
+         mv dir1/file1.txt dir2 - перемещение file1 из dir 1 в dir2
+===      
+9. find
+рекурсивный поиск файлов и каталогов в заданной директории по различным критериям (имя, размер, время изменения, тип и т.д.)
+синтаксис: find [-H] [-L] [-P] [-D debugopts] [-Olevel] [starting-point...] [expression]
+примеры: find /home -name "*.txt" - найти все файлы с расширением .txt в директории /home и её поддиректориях
+         find . -type f -size +10M - найти в текущей директории все файлы размером больше 10 Мегабайт
+===
+10. tar
+tar - утилита для создания архивов и работы с ними
+синтаксис: tar [OPTION...] [FILE]...
+примеры: tar -cf archive.tar file1.txt dir1/ - создать новый архив archive.tar из file1.txt и dir1/
+         tar -xf archive.tar - распаковать архив в текущую директорию

@@ -1,8 +1,9 @@
 # Task 3
 
-[full_name_pkg](https://github.com/ezhsluny/ROS/tree/task3/ex01/full_name_pkg) - шаблон из предыдущего модуля
-[service_full_name](https://github.com/ezhsluny/ROS/tree/task3/ex01/service_full_name) - основная реализация (сервис и клиент)
+- [full_name_pkg](https://github.com/ezhsluny/ROS/tree/task3/ex01/full_name_pkg) - шаблон из предыдущего модуля
+- [service_full_name](https://github.com/ezhsluny/ROS/tree/task3/ex01/service_full_name) - основная реализация (сервис и клиент)
 
+## Файловая структура
 ```
 ├── full_name_pkg
 │   ├── CMakeLists.txt

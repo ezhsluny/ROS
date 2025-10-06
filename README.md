@@ -41,12 +41,12 @@ colcon build --packages-select service_full_name
 
 2. Запуск сервиса
 ```bash
-ros2 run full_name_pkg service_name
+ros2 run service_full_name service_name
 ```
 
 3. Запуск клиента (в другом терминале)
 ```bash
-ros2 run full_name_pkg client_name Иванов Иван Иванович
+ros2 run service_full_name client_name Иванов Иван Иванович
 ```
 
 4. Пример вывода (для сервиса):

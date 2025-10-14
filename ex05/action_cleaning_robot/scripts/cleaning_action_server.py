@@ -1,244 +1,163 @@
 #!/usr/bin/env python3
+
 import rclpy
-from rclpy.action import ActionServer
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-from turtlesim.msg import Pose as TurtlePose
+from turtlesim.msg import Pose
+from rclpy.action import ActionServer
 import math
-import time
-import sys
-import os
 
-try:
-    from action_cleaning_robot.action import CleaningTask
-    print("SUCCESS: Imported CleaningTask action")
-except ImportError as e:
-    print(f"ERROR: Could not import CleaningTask: {e}")
-    print("Searching for module...")
-    for root, dirs, files in os.walk('/home/ezhsluny/ros2_ws/install'):
-        if 'action_cleaning_robot' in root and 'rosidl_generator_py' in root:
-            print(f"Found module at: {root}")
-            sys.path.insert(0, root)
-    try:
-        from action_cleaning_robot.action import CleaningTask
-        print("SUCCESS: Imported after path adjustment")
-    except ImportError:
-        print("FATAL: Could not import CleaningTask even after path adjustment")
-        sys.exit()
+from action_cleaning_robot.action import CleaningTask
 
-class CleaningServer(Node):
+class CleaningActionServer(Node):
     def __init__(self):
         super().__init__('cleaning_action_server')
-
-        # Публикатор для управления черепахой
-        self.cmd_vel_pub = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
-
-        # Подписчик для получения позиции черепахи
-        self.pose_subscriber = self.create_subscription(
-            TurtlePose, '/turtle1/pose', self.pose_callback, 10)
-
-        # Action сервер
         self._action_server = ActionServer(
             self,
             CleaningTask,
             'CleaningTask',
-            self.execute_callback)
-
+            self.processing_callback)
         self.current_pose = None
-        self.get_logger().info('Cleaning Action Server started')
+        self.velocity_publisher = self.create_publisher(Twist, 'turtle1/cmd_vel', 10)
+        self.pose_subscriber = self.create_subscription(Pose, 'turtle1/pose', self.pose_update, 10)
+        self.get_logger().info('Cleaning Action Server initialized and running')
 
-    def pose_callback(self, msg):
-        """Обновляем текущую позицию черепахи"""
+    def pose_update(self, msg):
         self.current_pose = msg
 
-    def execute_callback(self, goal_handle):
-        self.get_logger().info(f'Executing goal: {goal_handle.request.task_type}')
+    def adjust_angle(self, angle):
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        return angle
 
-        # Ждем данные о позиции
-        while self.current_pose is None:
-            self.get_logger().info('Waiting for pose data...')
-            time.sleep(0.1)
+    def processing_callback(self, goal_handle):
+        while self.current_pose is None and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
+        start_position_x = self.current_pose.x
+        start_position_y = self.current_pose.y
+        start_angle = self.current_pose.theta
 
-        result = CleaningTask.Result()
-        feedback_msg = CleaningTask.Feedback()
+        velocity_command = Twist()
+        movement_speed = 1.0
+        rotation_speed = 2.0
+        cleaning_resolution = 0.03
 
-        if goal_handle.request.task_type == "clean_square":
-            self.get_logger().info(f'Cleaning square {goal_handle.request.area_size}x{goal_handle.request.area_size}m')
-            success, cleaned_points, total_distance = self.clean_square_proper(
-                goal_handle, feedback_msg, goal_handle.request.area_size)
+        def rotate_to_desired_angle(target_angle):
+            while rclpy.ok():
+                angle_difference = self.adjust_angle(target_angle - self.current_pose.theta)
+                if abs(angle_difference) > 0.01:
+                    velocity_command.linear.x = 0.0
+                    velocity_command.angular.z = rotation_speed * angle_difference
+                else:
+                    velocity_command.linear.x = 0.0
+                    velocity_command.angular.z = 0.0
+                    self.velocity_publisher.publish(velocity_command)
+                    break
+                self.velocity_publisher.publish(velocity_command)
+                rclpy.spin_once(self, timeout_sec=0.01)
 
-        elif goal_handle.request.task_type == "return_home":
-            self.get_logger().info(f'Returning home to ({goal_handle.request.target_x}, {goal_handle.request.target_y})')
-            success, cleaned_points, total_distance = self.return_home_proper(
-                goal_handle, feedback_msg,
-                goal_handle.request.target_x, goal_handle.request.target_y)
+        def navigate_to_destination(target_x, target_y):
+            delta_x = target_x - self.current_pose.x
+            delta_y = target_y - self.current_pose.y
+            desired_angle = math.atan2(delta_y, delta_x)
+            rotate_to_desired_angle(desired_angle)
+            while rclpy.ok():
+                distance = math.hypot(self.current_pose.x - target_x, self.current_pose.y - target_y)
+                if distance > 0.015:
+                    direction = math.atan2(target_y - self.current_pose.y, target_x - self.current_pose.x)
+                    angle_error = self.adjust_angle(direction - self.current_pose.theta)
+                    velocity_command.linear.x = movement_speed
+                    velocity_command.angular.z = rotation_speed * angle_error
+                else:
+                    velocity_command.linear.x = 0.0
+                    velocity_command.angular.z = 0.0
+                    self.velocity_publisher.publish(velocity_command)
+                    break
+                self.velocity_publisher.publish(velocity_command)
+                rclpy.spin_once(self, timeout_sec=0.01)
+
+        processed_areas = 0
+        cleaning_size = goal_handle.request.area_size
+        operation_mode = goal_handle.request.task_type
+        final_result = CleaningTask.Result()
+
+        if operation_mode == "clean_square":
+            if cleaning_size <= 0.1:
+                goal_handle.abort()
+                self.get_logger().info('Invalid cleaning area size provided')
+                final_result.success = False
+                return final_result
+
+            cleaning_lines = int(cleaning_size / cleaning_resolution)
+            for line_index in range(cleaning_lines + 1):
+                current_y = start_position_y + line_index * cleaning_resolution
+                if current_y > start_position_y + cleaning_size:
+                    break
+                if line_index % 2 == 0:
+                    navigate_to_destination(start_position_x + cleaning_size, current_y)
+                else:
+                    navigate_to_destination(start_position_x, current_y)
+                processed_areas += 1
+                completion_percentage = int((line_index + 1) / (cleaning_lines + 1) * 100)
+                goal_handle.publish_feedback(CleaningTask.Feedback(
+                    progress_percent=completion_percentage,
+                    current_cleaned_points=processed_areas,
+                    current_x=self.current_pose.x,
+                    current_y=self.current_pose.y
+                ))
+
+            velocity_command.linear.x = 0.0
+            velocity_command.angular.z = 0.0
+            self.velocity_publisher.publish(velocity_command)
+
+            navigate_to_destination(start_position_x, start_position_y)
+            rotate_to_desired_angle(start_angle)
+            velocity_command.linear.x = 0.0
+            velocity_command.angular.z = 0.0
+            self.velocity_publisher.publish(velocity_command)
+
+            final_result.success = True
+            final_result.cleaned_points = processed_areas
+            final_result.total_distance = cleaning_size * cleaning_lines
+            goal_handle.succeed()
+            return final_result
+
+        elif operation_mode == "return_home":
+            home_position_x = goal_handle.request.target_x
+            home_position_y = goal_handle.request.target_y
+            navigate_to_destination(home_position_x, home_position_y)
+            rotate_to_desired_angle(start_angle)
+            velocity_command.linear.x = 0.0
+            velocity_command.angular.z = 0.0
+            self.velocity_publisher.publish(velocity_command)
+
+            final_result.success = True
+            final_result.cleaned_points = 0
+            final_result.total_distance = math.hypot(self.current_pose.x - home_position_x, self.current_pose.y - home_position_y)
+            goal_handle.succeed()
+
+            goal_handle.publish_feedback(CleaningTask.Feedback(
+                progress_percent=100,
+                current_cleaned_points=0,
+                current_x=self.current_pose.x,
+                current_y=self.current_pose.y
+            ))
+
+            return final_result
 
         else:
-            self.get_logger().error(f'Unknown task type: {goal_handle.request.task_type}')
-            success = False
-            cleaned_points = 0
-            total_distance = 0.0
+            self.get_logger().info('Unknown operation mode specified')
+            goal_handle.abort()
+            final_result.success = False
+            return final_result
 
-        result.success = success
-        result.cleaned_points = cleaned_points
-        result.total_distance = total_distance
-
-        if success:
-            self.get_logger().info(f'Task completed! Points: {cleaned_points}, Distance: {total_distance:.2f}m')
-        else:
-            self.get_logger().error('Task failed!')
-
-        goal_handle.succeed()
-        return result
-
-    def clean_square_proper(self, goal_handle, feedback_msg, side_length):
-        """Уборка квадратной области"""
-        print("=== STARTING SQUARE MOVEMENT ===")
-        print(f"Square size: {side_length}x{side_length}m")
-
-        cleaned_points = 0
-        total_distance = 0.0
-
-        for side in range(4):
-            if goal_handle.is_cancel_requested:
-                self.get_logger().info('Goal canceled')
-                return False, cleaned_points, total_distance
-
-            print(f"Side {side + 1}/4: Moving forward {side_length}m")
-
-            distance_moved = self.move_straight_distance(side_length)
-            total_distance += distance_moved
-
-            if side < 3:
-                print(f"Turning 90 degrees at corner {side + 1}")
-                self.turn_degrees(90)
-
-            cleaned_points += 1
-
-            progress = int((side + 1) / 4 * 100)
-            feedback_msg.progress_percent = progress
-            feedback_msg.current_cleaned_points = cleaned_points
-            if self.current_pose:
-                feedback_msg.current_x = self.current_pose.x
-                feedback_msg.current_y = self.current_pose.y
-            goal_handle.publish_feedback(feedback_msg)
-
-            print(f'Square progress: {progress}% - Side: {side + 1}/4 completed')
-
-        print("SQUARE COMPLETED: 4 sides, 3 turns (90 degrees each)")
-        return True, cleaned_points, total_distance
-
-    def return_home_proper(self, goal_handle, feedback_msg, home_x, home_y):
-        """Возврат в начальную точку"""
-        print("=== STARTING RETURN HOME ===")
-        print(f"Target: ({home_x}, {home_y})")
-
-        cleaned_points = 0
-        total_distance = 0.0
-
-        if not self.current_pose:
-            self.get_logger().error('No pose data available')
-            return False, 0, 0.0
-
-        current_x = self.current_pose.x
-        current_y = self.current_pose.y
-
-        dx = home_x - current_x
-        dy = home_y - current_y
-        distance_to_home = math.sqrt(dx**2 + dy**2)
-        target_angle = math.atan2(dy, dx)
-
-        print(f"Current position: ({current_x:.2f}, {current_y:.2f})")
-        print(f"Distance to home: {distance_to_home:.2f}m")
-        print(f"Target angle: {math.degrees(target_angle):.1f} degrees")
-
-        self.turn_to_angle(target_angle)
-
-        distance_moved = self.move_straight_distance(distance_to_home)
-        total_distance += distance_moved
-
-        cleaned_points = 3
-
-        feedback_msg.progress_percent = 100
-        feedback_msg.current_cleaned_points = cleaned_points
-        if self.current_pose:
-            feedback_msg.current_x = self.current_pose.x
-            feedback_msg.current_y = self.current_pose.y
-        goal_handle.publish_feedback(feedback_msg)
-
-        print("RETURN HOME COMPLETED")
-        return True, cleaned_points, total_distance
-
-    def move_straight_distance(self, distance, speed=1.0):
-        """Движение прямо на указанное расстояние"""
-        print(f"Moving straight: {distance}m at {speed}m/s")
-
-        twist = Twist()
-        twist.linear.x = speed
-
-        move_time = distance / speed
-        start_time = time.time()
-
-        while time.time() - start_time < move_time:
-            self.cmd_vel_pub.publish(twist)
-            time.sleep(0.1)
-
-        twist.linear.x = 0.0
-        self.cmd_vel_pub.publish(twist)
-        time.sleep(0.5)
-
-        print(f"Movement completed: {distance}m")
-        return distance
-
-    def turn_degrees(self, degrees, speed=1.0):
-        """Поворот на указанное количество градусов"""
-        print(f"Turning: {degrees} degrees at {speed}rad/s")
-
-        twist = Twist()
-        twist.angular.z = speed if degrees > 0 else -speed
-
-        turn_time = abs(degrees) * (math.pi / 180) / speed
-        start_time = time.time()
-
-        while time.time() - start_time < turn_time:
-            self.cmd_vel_pub.publish(twist)
-            time.sleep(0.1)
-
-        twist.angular.z = 0.0
-        self.cmd_vel_pub.publish(twist)
-        time.sleep(0.5)
-
-        print(f"Turn completed: {degrees} degrees")
-
-    def turn_to_angle(self, target_angle_rad):
-        """Поворот к указанному углу (в радианах)"""
-        if not self.current_pose:
-            return
-
-        current_angle = self.current_pose.theta
-        angle_diff = target_angle_rad - current_angle
-
-        while angle_diff > math.pi:
-            angle_diff -= 2 * math.pi
-        while angle_diff < -math.pi:
-            angle_diff += 2 * math.pi
-
-        print(f"Turning from {math.degrees(current_angle):.1f} to {math.degrees(target_angle_rad):.1f} degrees")
-        print(f"Angle difference: {math.degrees(angle_diff):.1f} degrees")
-
-        self.turn_degrees(math.degrees(angle_diff))
-
-def main():
-    rclpy.init()
-    server = CleaningServer()
-
-    try:
-        rclpy.spin(server)
-    except KeyboardInterrupt:
-        print('Server stopped by user')
-    finally:
-        server.destroy_node()
-        rclpy.shutdown()
+def main(args=None):
+    rclpy.init(args=args)
+    action_server = CleaningActionServer()
+    rclpy.spin(action_server)
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

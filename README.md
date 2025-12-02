@@ -2,6 +2,7 @@
 
 В ex05 реализовано уникальное движение робота: робот проезжает по прямой, вращается на месте на небольшой угол ("танцует"), поворачивается на 90 градусов и проезжает по прямой задом. В итоге получается 4-конечная звезда (немного съезжающая)
 
+## Структура пакетов в ex05
 ```bash
 gazebo_robot/
 ├── config/
@@ -22,15 +23,15 @@ gazebo_robot/
 ├── setup.py
 ├── test/
 └── worlds/
-    └── empty.world                   # файл мира для gazebo
+    └── empty.world                    # файл мира для gazebo
 ```
 
 ```bash
 gazebo_robot_circle/
 ├── gazebo_robot_circle/
-│   ├── circle_movement.py           # движение по кругу
+│   ├── circle_movement.py             # движение по кругу
 │   ├── __init__.py
-│   └── line_dance.py                # уникальное движение
+│   └── line_dance.py                  # уникальное движение
 ├── package.xml
 ├── resource/
 ├── setup.cfg

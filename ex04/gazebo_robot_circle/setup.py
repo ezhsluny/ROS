@@ -21,7 +21,7 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
-            'circle_movement = gazebo_robot_circle.circle_movement:main'
+            'circle_movement = gazebo_robot_circle.circle_movement:main',
         ],
     },
 )

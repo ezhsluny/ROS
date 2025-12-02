@@ -16,7 +16,6 @@ setup(
         ('share/' + package_name + '/rviz', ['rviz/config.rviz']),
         ('share/' + package_name + '/worlds', ['worlds/empty.world']),
         ('share/' + package_name + '/config', ['config/robot_bridge.yaml']),
-        ('share/' + package_name + '/config', ['config/control.yaml']),
         ('share/' + package_name, ['robot.urdf.xacro']),
         ('share/' + package_name, ['robot.gazebo.xacro']),
     ],
